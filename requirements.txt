@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+jinja2
+torch
+langchain
+langchain-huggingface
+langchain-community
+llama-cpp-python
+sentence-transformers
+chromadb
+pypdf

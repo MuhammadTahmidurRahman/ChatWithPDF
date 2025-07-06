@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Chat with PDF</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+  <div class="container">
+    <h1>Chat with your PDF</h1>
+    <form action="/query" method="post" enctype="multipart/form-data">
+      <label>Select a PDF:</label>
+      <input type="file" name="file" accept=".pdf" required/>
+
+      <label>Your question:</label>
+      <input type="text" name="question" placeholder="e.g. What’s this about?" required/>
+
+      <button type="submit">Ask</button>
+    </form>
+  </div>
+</body>
+</html>
