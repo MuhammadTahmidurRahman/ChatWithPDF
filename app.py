@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,14 +30,17 @@ async def query(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # 2) build your chain and run it
+    # 2) build your chain and run it, timing the whole thing
+    start_time = time.time()
     chain = build_chain(file_path)
     answer = ask_chain(chain, question)
+    elapsed = time.time() - start_time
 
-    # 3) render result page
+    # 3) render result page (now including process_time)
     return templates.TemplateResponse("result.html", {
         "request": request,
         "filename": file.filename,
         "question": question,
         "answer": answer,
+        "process_time": f"{elapsed:.2f}s",
     })
