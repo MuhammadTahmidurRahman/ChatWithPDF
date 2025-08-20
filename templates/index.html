@@ -2,21 +2,318 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <title>Chat with PDF</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI PDF Chat Assistant</title>
   <link rel="stylesheet" href="/static/css/style.css"/>
 </head>
 <body>
-  <div class="container">
-    <h1>Chat with your PDF</h1>
-    <form action="/query" method="post" enctype="multipart/form-data">
-      <label>Select a PDF:</label>
-      <input type="file" name="file" accept=".pdf" required/>
-
-      <label>Your question:</label>
-      <input type="text" name="question" placeholder="e.g. What’s this about?" required/>
-
-      <button type="submit">Ask</button>
-    </form>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>🤖 AI PDF Chat Assistant</h1>
+      <div class="pdf-indicator" id="pdf-status">No PDF loaded</div>
+      <div class="conversation-info" id="conversation-info"></div>
+    </div>
+    
+    <div class="chat-messages" id="chat-messages">
+      <div class="message bot">
+        <div class="message-avatar">🤖</div>
+        <div class="message-content">
+          <p>Hello! I'm your context-aware AI assistant. I can remember our conversation and reason through complex questions step-by-step. Upload a PDF to get started!</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="chat-input-area">
+      <form id="chat-form">
+        <div class="file-upload-area" id="file-upload-area">
+          <div class="file-input-wrapper" id="file-drop-zone">
+            <input type="file" name="file" id="file-input" accept=".pdf"/>
+            <div class="file-label">📄 Click or drag PDF here</div>
+          </div>
+        </div>
+        
+        <div class="message-input-area">
+          <div class="input-wrapper">
+            <input type="text" name="question" id="question" 
+                   placeholder="Upload a PDF first..." disabled/>
+          </div>
+          <button type="submit" class="send-button" id="send-button" disabled>✈️</button>
+          <button type="button" class="clear-button" id="clear-button" style="display: none;">🗑️</button>
+        </div>
+      </form>
+    </div>
   </div>
+
+  <script>
+    let currentFileName = null;
+    let isProcessing = false;
+    let conversationCount = 0;
+    
+    const elements = {
+      fileInput: document.getElementById('file-input'),
+      fileDropZone: document.getElementById('file-drop-zone'),
+      questionInput: document.getElementById('question'),
+      sendButton: document.getElementById('send-button'),
+      clearButton: document.getElementById('clear-button'),
+      pdfStatus: document.getElementById('pdf-status'),
+      conversationInfo: document.getElementById('conversation-info'),
+      chatMessages: document.getElementById('chat-messages'),
+      chatForm: document.getElementById('chat-form'),
+      fileUploadArea: document.getElementById('file-upload-area')
+    };
+
+    // File upload handlers
+    setupFileHandlers();
+    setupFormHandlers();
+
+    function setupFileHandlers() {
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        elements.fileDropZone.addEventListener(eventName, e => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        elements.fileDropZone.addEventListener(eventName, () => {
+          elements.fileDropZone.classList.add('dragover');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        elements.fileDropZone.addEventListener(eventName, () => {
+          elements.fileDropZone.classList.remove('dragover');
+        });
+      });
+
+      elements.fileDropZone.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === 'application/pdf') {
+          elements.fileInput.files = files;
+          handleFileSelect(files[0]);
+        }
+      });
+
+      elements.fileInput.addEventListener('change', e => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0]);
+        }
+      });
+    }
+
+    function handleFileSelect(file) {
+      currentFileName = file.name;
+      elements.pdfStatus.innerHTML = `📄 ${file.name}`;
+      elements.pdfStatus.style.background = 'rgba(34, 197, 94, 0.2)';
+      elements.questionInput.disabled = false;
+      elements.sendButton.disabled = false;
+      elements.clearButton.style.display = 'block';
+      elements.questionInput.placeholder = `Ask me about ${file.name}...`;
+      elements.fileUploadArea.style.display = 'none';
+      elements.questionInput.focus();
+      
+      // Reset conversation counter
+      conversationCount = 0;
+      updateConversationInfo();
+    }
+
+    function setupFormHandlers() {
+      elements.chatForm.addEventListener('submit', handleSubmit);
+      elements.clearButton.addEventListener('click', clearConversation);
+      
+      elements.questionInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          elements.chatForm.dispatchEvent(new Event('submit'));
+        }
+      });
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      
+      if (isProcessing) return;
+      
+      const question = elements.questionInput.value.trim();
+      if (!question) return;
+      
+      // Add user message
+      addMessage(question, 'user');
+      elements.questionInput.value = '';
+      
+      // Show real-time reasoning
+      const botMessage = addMessage('', 'bot', true);
+      
+      isProcessing = true;
+      elements.sendButton.disabled = true;
+      elements.questionInput.disabled = true;
+      
+      try {
+        await processWithRealTimeUpdates(question, botMessage);
+        
+      } catch (error) {
+        console.error('Processing error:', error);
+        updateBotMessage(botMessage, 'Error processing request', '⚠ Something went wrong');
+      } finally {
+        isProcessing = false;
+        elements.sendButton.disabled = false;
+        elements.questionInput.disabled = false;
+        elements.questionInput.focus();
+      }
+    }
+
+    async function processWithRealTimeUpdates(question, botMessage) {
+      const formData = new FormData();
+      formData.append('question', question);
+      
+      if (elements.fileInput.files[0]) {
+        formData.append('file', elements.fileInput.files[0]);
+      } else if (currentFileName) {
+        formData.append('filename', currentFileName);
+      }
+
+      // Simulate real-time reasoning steps
+      const steps = [
+        '🔍 Analyzing your question...',
+        `💭 Recalling context from ${conversationCount} previous exchanges...`,
+        '📚 Searching through PDF content...',
+        '🧠 Applying chain-of-thought reasoning...',
+        '💡 Formulating response...'
+      ];
+
+      for (let i = 0; i < steps.length; i++) {
+        updateBotMessage(botMessage, '', steps[i]);
+        await sleep(800);
+      }
+
+      // Make actual request
+      const response = await fetch('/query', {
+        method: 'POST',
+        body: formData
+      });
+
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      // Extract answer - check hidden div first
+      const answerEl = doc.querySelector('.answer-text');
+      const reasoningEl = doc.querySelector('.reasoning-text');
+      const elapsedEl = doc.querySelector('.elapsed');
+      
+      let answer = answerEl?.textContent?.trim() || '';
+      let reasoning = reasoningEl?.textContent?.trim() || '';
+      let elapsed = elapsedEl?.textContent?.trim() || '';
+      
+      // Fallback: extract from visible content if hidden divs are empty
+      if (!answer) {
+        const bodyText = doc.body.textContent || '';
+        const aMatch = bodyText.match(/A:\s*(.+?)(?=Response time:|$)/s);
+        if (aMatch) {
+          answer = aMatch[1].trim();
+        }
+      }
+
+      updateBotMessage(botMessage, answer || 'No answer found', reasoning, elapsed);
+      
+      conversationCount++;
+      updateConversationInfo();
+    }
+
+    function addMessage(content, type, isThinking = false) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${type}`;
+      
+      const avatar = document.createElement('div');
+      avatar.className = 'message-avatar';
+      avatar.textContent = type === 'user' ? '👤' : '🤖';
+      
+      const messageContent = document.createElement('div');
+      messageContent.className = 'message-content';
+      
+      if (isThinking) {
+        messageContent.innerHTML = `
+          <div class="reasoning-section">
+            <div class="reasoning-title">🧠 Thinking...</div>
+            <div class="thinking-content">Starting analysis...</div>
+          </div>
+        `;
+      } else {
+        messageContent.innerHTML = `<div>${content}</div>`;
+      }
+      
+      messageDiv.appendChild(avatar);
+      messageDiv.appendChild(messageContent);
+      elements.chatMessages.appendChild(messageDiv);
+      elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+      
+      return messageDiv;
+    }
+
+    function updateBotMessage(messageDiv, answer, reasoning, elapsed) {
+      const messageContent = messageDiv.querySelector('.message-content');
+      let html = '';
+      
+      if (reasoning && reasoning.trim()) {
+        html += `
+          <div class="reasoning-section">
+            <div class="reasoning-title">🧠 My reasoning process:</div>
+            <div class="thinking-content">${escapeHtml(reasoning)}</div>
+          </div>
+        `;
+      }
+      
+      if (answer && answer.trim()) {
+        html += `<div class="answer-content">${escapeHtml(answer)}</div>`;
+      }
+      
+      if (elapsed && elapsed.trim()) {
+        html += `<div class="response-time">⏱️ ${escapeHtml(elapsed)}</div>`;
+      }
+      
+      messageContent.innerHTML = html;
+      elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function clearConversation() {
+      if (!currentFileName) return;
+      
+      const formData = new FormData();
+      formData.append('filename', currentFileName);
+      
+      await fetch('/clear_conversation', {
+        method: 'POST',
+        body: formData
+      });
+      
+      // Clear UI
+      const messages = elements.chatMessages.querySelectorAll('.message:not(:first-child)');
+      messages.forEach(msg => msg.remove());
+      
+      conversationCount = 0;
+      updateConversationInfo();
+      
+      addMessage('Conversation cleared! How can I help you with the PDF?', 'bot');
+    }
+
+    function updateConversationInfo() {
+      if (conversationCount > 0) {
+        elements.conversationInfo.textContent = `💬 ${conversationCount} exchanges`;
+        elements.conversationInfo.style.display = 'block';
+      } else {
+        elements.conversationInfo.style.display = 'none';
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
 </body>
 </html>
