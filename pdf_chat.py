@@ -1,4 +1,4 @@
-import torch
+import os
 import re
 import numpy as np
 from typing import List, Dict, Any, Tuple
@@ -6,23 +6,28 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_community.llms import LlamaCpp
+from langchain_groq import ChatGroq
 from langchain.schema import Document
-from langchain.prompts import PromptTemplate
+from langchain.prompts import ChatPromptTemplate
 import threading
+from dotenv import load_dotenv
 
-MODEL_PATH = "deepseek-r1-distill-llama-8b-q4_k_m.gguf"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Load environment variables
+load_dotenv()
 
-CHUNK_SIZE = 1500
+# Optimized settings
+CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
-MAX_CONTEXT_CHUNKS = 4
+MAX_CONTEXT_CHUNKS = 6
 
+# Global cache and locks
 chain_data_cache = None
 cache_lock = threading.Lock()
 model_lock = threading.Lock()
 
 class SemanticChunker:
+    """Enhanced chunking with semantic awareness"""
+    
     def __init__(self):
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=CHUNK_SIZE,
@@ -40,128 +45,237 @@ class SemanticChunker:
             chunk.metadata['has_quotes'] = '"' in chunk.page_content or "'" in chunk.page_content
         return chunks
 
-class COTReasoner:
-    def __init__(self, llm):
-        self.llm = llm
-        # Simplified prompt that works better with different models
-        self.reasoning_prompt = PromptTemplate(
-            input_variables=["context", "question", "chat_history", "is_follow_up", "is_vague_follow_up"],
-            template="""Answer based ONLY on the document context and chat history provided.
+class AdvancedCOTPromptEngineering:
+    """
+    Advanced Chain of Thought Prompt Engineering System
+    This class demonstrates sophisticated prompt engineering techniques for COT reasoning
+    """
+    
+    def __init__(self):
+        self.model_name = "llama-3.3-70b-versatile"
+        self.llm = ChatGroq(
+            model=self.model_name,
+            temperature=0.1,
+            max_tokens=2000,
+            groq_api_key=os.getenv("GROQ_API_KEY")
+        )
+        
+        # Advanced COT Prompt Template with Multiple Reasoning Strategies
+        self.advanced_cot_prompt = ChatPromptTemplate.from_template("""
+You are an expert document analyst equipped with advanced reasoning capabilities. Your task is to provide comprehensive, well-reasoned answers using sophisticated Chain-of-Thought (COT) reasoning.
 
-Previous conversation:
-{chat_history}
-
-Document context:
+=== CONTEXT INFORMATION ===
+Document Context:
 {context}
 
-Question: {question}
+Conversation History:
+{chat_history}
 
-Instructions: Read the context carefully. If this is a follow-up ({is_follow_up}) or vague question ({is_vague_follow_up}), use previous conversation for context. Give a direct, clear answer.
+=== QUESTION ANALYSIS ===
+Current Question: "{question}"
+Question Type: {question_type}
+Is Follow-up: {is_follow_up}
+Is Vague Follow-up: {is_vague_follow_up}
 
-Answer:"""
-        )
-        self.chain = self.reasoning_prompt | self.llm
+=== ADVANCED COT REASONING FRAMEWORK ===
+
+**STEP 1: QUESTION DECOMPOSITION AND UNDERSTANDING**
+Break down the question into its core components:
+- What is the user specifically asking for?
+- What type of information is required (factual, analytical, comparative, etc.)?
+- Are there any implicit assumptions or context dependencies?
+- How does this relate to previous conversation elements?
+
+**STEP 2: CONTEXT EVALUATION AND RELEVANCE MAPPING**
+Analyze the provided document context:
+- Which sections of the context directly address the question?
+- What supporting information is available?
+- Are there any contradictions or ambiguities in the source material?
+- How reliable and comprehensive is the available information?
+
+**STEP 3: EVIDENCE EXTRACTION AND FACT VERIFICATION**
+Systematically extract relevant information:
+- Direct quotes or statements that answer the question
+- Supporting details that provide context
+- Numerical data, dates, or specific facts
+- Relationships between different pieces of information
+
+**STEP 4: LOGICAL REASONING CHAIN**
+Apply structured reasoning:
+- What can be directly concluded from the evidence?
+- What reasonable inferences can be drawn?
+- Are there any logical gaps that need acknowledgment?
+- How do different pieces of evidence connect to form a complete picture?
+
+**STEP 5: CONVERSATION CONTINUITY ANALYSIS**
+Consider conversational context:
+- How does this question build upon previous exchanges?
+- Are there themes or topics that need continuity?
+- Should the answer reference or expand on previous responses?
+
+**STEP 6: UNCERTAINTY AND LIMITATION ASSESSMENT**
+Evaluate confidence levels:
+- What information is well-supported by the document?
+- Where are the gaps or uncertainties?
+- What assumptions, if any, are being made?
+- How should limitations be communicated?
+
+**STEP 7: RESPONSE SYNTHESIS AND OPTIMIZATION**
+Craft the optimal response:
+- Structure the answer for clarity and completeness
+- Balance detail with accessibility
+- Ensure direct response to the user's question
+- Include appropriate caveats or limitations
+
+=== FINAL RESPONSE FORMAT ===
+
+Based on my analysis, here is my comprehensive response:
+
+[ANSWER_START]
+[Provide your complete, well-reasoned answer here. This should directly address the user's question while incorporating insights from your COT reasoning process. Make sure to:
+- Start with a clear, direct answer
+- Provide supporting details from the document
+- Acknowledge any limitations or uncertainties
+- Maintain appropriate tone and detail level]
+[ANSWER_END]
+
+=== REASONING DOCUMENTATION ===
+
+**Question Analysis**: [Brief summary of question understanding]
+**Key Evidence Found**: [Main supporting information from context]
+**Reasoning Process**: [Key logical steps taken]
+**Confidence Level**: [High/Medium/Low with justification]
+**Limitations Noted**: [Any gaps or uncertainties]
+
+Remember: Base all responses strictly on the provided document context and conversation history. If information is not available or unclear, explicitly acknowledge these limitations while providing the best possible response based on available evidence.
+""")
+        
+        self.chain = self.advanced_cot_prompt | self.llm
     
-    def reason(self, context: str, question: str, chat_history: str, is_follow_up: bool, is_vague_follow_up: bool) -> Tuple[str, str]:
+    def advanced_reason(self, context: str, question: str, chat_history: str, is_follow_up: bool, is_vague_follow_up: bool) -> Tuple[str, str, str]:
+        """
+        Execute advanced COT reasoning with custom prompt engineering
+        """
         try:
-            full_response = self.chain.invoke({
+            # Determine question type for better prompt customization
+            question_type = self._classify_question(question, is_follow_up, is_vague_follow_up)
+            
+            # Execute the advanced COT prompt
+            response = self.chain.invoke({
                 "context": context,
                 "question": question,
                 "chat_history": chat_history,
                 "is_follow_up": is_follow_up,
-                "is_vague_follow_up": is_vague_follow_up
+                "is_vague_follow_up": is_vague_follow_up,
+                "question_type": question_type
             })
             
-            if hasattr(full_response, 'content'):
-                response_text = full_response.content
-            else:
-                response_text = str(full_response)
+            full_response = response.content if hasattr(response, 'content') else str(response)
             
-            answer = self.extract_final_answer(response_text)
-            return response_text, answer
+            # Extract structured components
+            final_answer = self._extract_final_answer(full_response)
+            reasoning_steps = self._extract_reasoning_documentation(full_response)
+            
+            return full_response, final_answer, reasoning_steps
             
         except Exception as e:
-            return f"Error: {str(e)}", "I encountered an error while processing your question."
+            error_msg = f"Advanced COT reasoning encountered an error: {str(e)}"
+            return f"Error: {str(e)}", error_msg, f"Error in reasoning process: {str(e)}"
     
-    def extract_final_answer(self, response_text: str) -> str:
-        """Enhanced answer extraction that works with multiple model formats"""
+    def _classify_question(self, question: str, is_follow_up: bool, is_vague_follow_up: bool) -> str:
+        """Classify question type for optimal prompt engineering"""
+        if is_vague_follow_up:
+            return "Vague Follow-up (requires context expansion)"
+        elif is_follow_up:
+            return "Contextual Follow-up (builds on previous exchange)"
         
-        print(f"DEBUG - Raw response: {response_text[:500]}")  # Debug log
+        # Analyze question patterns
+        q_lower = question.lower()
         
-        # First, extract content after </think> tag if it exists
-        think_match = re.search(r'</think>\s*(.+)', response_text, re.DOTALL)
-        if think_match:
-            post_think_content = think_match.group(1).strip()
-            print(f"DEBUG - Post-think content: {post_think_content[:200]}")
-            if len(post_think_content) > 20:
-                # Clean up the post-think content
-                cleaned = re.sub(r'\*+', '', post_think_content).strip()
-                # Take the main content, stopping at any meta-text
-                main_content = re.split(r'\n(?=captivated by|⏱️|\d+\.\d+s)', cleaned)[0].strip()
-                if len(main_content) > 20:
-                    return main_content
+        if any(word in q_lower for word in ['what', 'who', 'when', 'where']):
+            return "Factual Information Request"
+        elif any(word in q_lower for word in ['why', 'how', 'explain']):
+            return "Analytical/Explanatory Question"
+        elif any(word in q_lower for word in ['compare', 'difference', 'similar', 'contrast']):
+            return "Comparative Analysis"
+        elif '?' not in question:
+            return "Statement/Command (requires interpretation)"
+        else:
+            return "General Inquiry"
+    
+    def _extract_final_answer(self, response_text: str) -> str:
+        """Extract the final answer from COT response"""
+        # Look for content between ANSWER_START and ANSWER_END markers
+        answer_pattern = r'\[ANSWER_START\](.*?)\[ANSWER_END\]'
+        match = re.search(answer_pattern, response_text, re.DOTALL)
         
-        # Clean the response by removing think tags
-        cleaned_response = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
-        cleaned_response = re.sub(r'\*+', '', cleaned_response).strip()
-        
-        print(f"DEBUG - Cleaned response: {cleaned_response[:200]}")
-        
-        # Pattern 1: Look for "Answer:" explicitly
-        answer_match = re.search(r'Answer\s*[:\-]\s*(.+?)(?=\n\n|$)', cleaned_response, re.DOTALL | re.IGNORECASE)
-        if answer_match:
-            answer = answer_match.group(1).strip()
+        if match:
+            answer = match.group(1).strip()
+            # Clean up the answer
             answer = re.sub(r'\n+', ' ', answer).strip()
-            if len(answer) > 10:
+            if len(answer) > 20:
                 return answer
         
-        # Pattern 2: Look for summary/conclusion patterns
-        final_patterns = [
-            r'(?:So,?\s*)?(?:to summarize|in summary|the story)\s*[,:]?\s*(.+?)(?=\n|$)',
-            r'(?:Therefore|Thus)[,:]?\s*(.+?)(?=\n|$)',
-            r'The story.*?is about\s*(.+?)(?=\n|$)',
-        ]
+        # Fallback: extract last substantial paragraph before reasoning documentation
+        sections = response_text.split('=== REASONING DOCUMENTATION ===')
+        if len(sections) > 1:
+            content_section = sections[0]
+            paragraphs = [p.strip() for p in content_section.split('\n\n') if len(p.strip()) > 30]
+            if paragraphs:
+                return paragraphs[-1]
         
-        for pattern in final_patterns:
-            match = re.search(pattern, cleaned_response, re.DOTALL | re.IGNORECASE)
+        return "Based on the document analysis, I found relevant information but need more specific guidance to provide a targeted response."
+    
+    def _extract_reasoning_documentation(self, response_text: str) -> str:
+        """Extract and format reasoning documentation"""
+        # Look for reasoning documentation section
+        reasoning_pattern = r'=== REASONING DOCUMENTATION ===(.*?)(?=$|Remember:)'
+        match = re.search(reasoning_pattern, response_text, re.DOTALL)
+        
+        if match:
+            reasoning = match.group(1).strip()
+            return self._format_reasoning_steps(reasoning)
+        
+        # Fallback: extract step-by-step reasoning
+        steps_pattern = r'\*\*STEP \d+:.*?\*\*(.*?)(?=\*\*STEP|\*\*FINAL|\[ANSWER_START\]|$)'
+        steps = re.findall(steps_pattern, response_text, re.DOTALL)
+        
+        if steps:
+            formatted_steps = []
+            for i, step in enumerate(steps, 1):
+                clean_step = re.sub(r'\n+', ' ', step.strip())
+                if clean_step:
+                    formatted_steps.append(f"🔍 Step {i}: {clean_step}")
+            return "\n\n".join(formatted_steps)
+        
+        return "Advanced COT reasoning completed with comprehensive analysis."
+    
+    def _format_reasoning_steps(self, reasoning_text: str) -> str:
+        """Format reasoning documentation into readable steps"""
+        # Split by reasoning components
+        components = {
+            'Question Analysis': '🎯',
+            'Key Evidence Found': '📋',
+            'Reasoning Process': '🧠',
+            'Confidence Level': '📊',
+            'Limitations Noted': '⚠️'
+        }
+        
+        formatted_parts = []
+        for component, emoji in components.items():
+            pattern = rf'\*\*{re.escape(component)}\*\*:?\s*(.*?)(?=\*\*|$)'
+            match = re.search(pattern, reasoning_text, re.DOTALL | re.IGNORECASE)
             if match:
-                answer = match.group(1).strip()
-                answer = re.sub(r'\n+', ' ', answer).strip()
-                if len(answer) > 10:
-                    return answer
+                content = match.group(1).strip()
+                content = re.sub(r'\n+', ' ', content)
+                if content and content != '[Brief summary of question understanding]':
+                    formatted_parts.append(f"{emoji} {component}:\n{content}")
         
-        # Pattern 3: Take the first substantial complete sentence/paragraph
-        paragraphs = [p.strip() for p in cleaned_response.split('\n') if p.strip()]
-        for paragraph in paragraphs:
-            if (len(paragraph) > 30 and 
-                not paragraph.lower().startswith(('the user', 'from the context', 'based on', 'debug')) and
-                not re.match(r'^\d+\.', paragraph.strip())):
-                # Clean and return the paragraph
-                clean_para = re.sub(r'\n+', ' ', paragraph).strip()
-                return clean_para
-        
-        # Pattern 4: Extract the longest meaningful sentence
-        sentences = re.split(r'[.!?]+', cleaned_response)
-        valid_sentences = []
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if (len(sentence) > 25 and 
-                not sentence.lower().startswith(('the user', 'from the', 'based on', 'debug')) and
-                not re.match(r'^\d+\.', sentence.strip())):
-                valid_sentences.append(sentence)
-        
-        if valid_sentences:
-            best_sentence = max(valid_sentences, key=len)
-            return best_sentence.strip() + "."
-        
-        # Final fallback - return the cleaned response if it's substantial
-        if len(cleaned_response) > 20:
-            return cleaned_response[:300] + "..." if len(cleaned_response) > 300 else cleaned_response
-        
-        return "I can see information in the document, but I need a clearer question to provide a specific answer."
+        return "\n\n".join(formatted_parts) if formatted_parts else reasoning_text.strip()
 
 def build_chain(pdf_path: str) -> Dict[str, Any]:
+    """Build enhanced RAG chain with advanced COT prompt engineering"""
+    
     global chain_data_cache
     
     with cache_lock:
@@ -179,44 +293,46 @@ def build_chain(pdf_path: str) -> Dict[str, Any]:
         chunks = chunker.chunk_documents(docs)
         print(f"Created {len(chunks)} chunks")
         
+        # Use optimized embedding model
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={"device": device, "trust_remote_code": False},
-            encode_kwargs={"normalize_embeddings": True, "batch_size": 16}
+            model_kwargs={"device": "cpu", "trust_remote_code": False},
+            encode_kwargs={"normalize_embeddings": True, "batch_size": 32}
         )
         
-        vectordb = Chroma.from_documents(chunks, embeddings, persist_directory=None)
+        vectordb = Chroma.from_documents(
+            chunks, 
+            embeddings,
+            persist_directory=None
+        )
+        
+        # Enhanced retriever
         retriever = vectordb.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": MAX_CONTEXT_CHUNKS, "fetch_k": 8}
+            search_kwargs={
+                "k": MAX_CONTEXT_CHUNKS, 
+                "fetch_k": 12,
+                "lambda_mult": 0.7
+            }
         )
         
-        # Optimized settings for better performance
-        llm = LlamaCpp(
-            model_path=MODEL_PATH,
-            temperature=0.1,  # Lower for more focused answers
-            max_tokens=300,   # Reduced for more concise responses
-            top_p=0.7,       # More focused sampling
-            n_ctx=3072,      # Slightly reduced context
-            n_batch=128,     # Smaller batches for stability
-            verbose=False,   # Reduce noise
-            use_mlock=True,
-            n_threads=None,
-            repeat_penalty=1.1  # Prevent repetition
-        )
+        # Initialize Advanced COT Prompt Engineering System
+        cot_reasoner = AdvancedCOTPromptEngineering()
         
-        reasoner = COTReasoner(llm)
-        print("Chain built successfully!")
+        print("✅ Advanced COT Chain built successfully with custom prompt engineering!")
         
         chain_data = {
             'retriever': retriever,
-            'reasoner': reasoner,
+            'cot_reasoner': cot_reasoner,  # Using advanced COT prompt engineering
             'vectordb': vectordb,
             'chunks': chunks,
             'metadata': {
                 'total_chunks': len(chunks),
                 'total_pages': len(docs),
-                'chunk_size': CHUNK_SIZE
+                'chunk_size': CHUNK_SIZE,
+                'llm_model': cot_reasoner.model_name,
+                'embedding_model': 'sentence-transformers/all-MiniLM-L6-v2',
+                'reasoning_engine': 'Advanced COT Prompt Engineering with Custom Templates'
             }
         }
         
@@ -228,114 +344,172 @@ def build_chain(pdf_path: str) -> Dict[str, Any]:
         raise e
 
 def ask_chain(chain_data: Dict[str, Any], question: str, chat_history: List[Dict] = None, is_follow_up: bool = False, is_vague_follow_up: bool = False) -> Dict[str, str]:
+    """Execute question with advanced COT prompt engineering"""
+    
     if chat_history is None:
         chat_history = []
     
     with model_lock:
         try:
-            print(f"Processing question: {question}")
+            print(f"🎯 Processing question with Advanced COT: {question}")
             
+            # Build conversation history
             history_text = "\n".join([
                 f"Q: {item['question']}\nA: {item['answer']}" 
-                for item in chat_history[-3:]
+                for item in chat_history[-4:]
             ]) if chat_history else "No previous conversation."
             
+            # Retrieve relevant context
             if is_vague_follow_up and chat_history:
-                context = chat_history[-1].get('answer', '')
-                context_chunks = 0
-                print("Using previous answer as context for vague follow-up")
+                # Enhanced context for vague follow-ups
+                prev_context = chat_history[-1].get('context', '')
+                enhanced_query = f"{chat_history[-1].get('question', '')} {question}"
+                relevant_docs = chain_data['retriever'].invoke(enhanced_query)
+                new_context = "\n\n".join([doc.page_content for doc in relevant_docs[:3]])
+                context = f"Previous context:\n{prev_context}\n\nAdditional context:\n{new_context}"
+                context_chunks = len(relevant_docs)
+                print("🔄 Enhanced context for vague follow-up")
             else:
                 enhanced_query = enhance_query(question, chat_history, is_follow_up)
-                print(f"Enhanced query: {enhanced_query}")
+                print(f"🔍 Enhanced query: {enhanced_query}")
                 relevant_docs = chain_data['retriever'].invoke(enhanced_query)
                 context = "\n\n".join([doc.page_content for doc in relevant_docs])
                 context_chunks = len(relevant_docs)
-                print(f"Retrieved {context_chunks} relevant documents")
-                
-                if context_chunks == 0 and chat_history:
-                    context = chat_history[-1].get('answer', '') + "\n" + context
-                    print("No relevant docs found; using prior answer as context")
+                print(f"📚 Retrieved {context_chunks} relevant documents")
             
-            reasoning, answer = chain_data['reasoner'].reason(
-                context=context[:1800],  # Reduced context size
+            # Execute Advanced COT Reasoning with Custom Prompt Engineering
+            print("🧠 Executing Advanced COT Prompt Engineering...")
+            full_reasoning, clean_answer, formatted_reasoning = chain_data['cot_reasoner'].advanced_reason(
+                context=context[:6000],  # Increased context for better reasoning
                 question=question,
                 chat_history=history_text,
                 is_follow_up=is_follow_up,
                 is_vague_follow_up=is_vague_follow_up
             )
             
-            print(f"Extracted answer: {answer}")
+            print("✅ Advanced COT reasoning completed!")
             
             return {
-                'reasoning': reasoning,
-                'answer': answer,
-                'context_chunks': context_chunks
+                'reasoning': formatted_reasoning,  # Formatted reasoning steps
+                'answer': clean_answer,           # Clean final answer
+                'context_chunks': context_chunks,
+                'context': context[:1000],        # Context for follow-ups
+                'models_used': {
+                    'llm_model': chain_data['metadata']['llm_model'],
+                    'embedding_model': chain_data['metadata']['embedding_model'],
+                    'reasoning_engine': chain_data['metadata']['reasoning_engine']
+                },
+                'raw_reasoning': full_reasoning   # Full COT reasoning for analysis
             }
             
         except Exception as e:
-            print(f"Error in ask_chain: {str(e)}")
+            print(f"❌ Error in advanced COT reasoning: {str(e)}")
             return {
-                'reasoning': f"Error during processing: {str(e)}",
-                'answer': "I encountered an error while processing your question. Please try rephrasing it.",
-                'context_chunks': 0
+                'reasoning': f"Error in advanced COT reasoning: {str(e)}",
+                'answer': "I encountered an error during advanced reasoning. Please verify the API key and try again.",
+                'context_chunks': 0,
+                'models_used': {
+                    'llm_model': 'Error',
+                    'embedding_model': 'Error', 
+                    'reasoning_engine': 'Advanced COT Error'
+                }
             }
 
 def enhance_query(question: str, chat_history: List[Dict], is_follow_up: bool) -> str:
+    """Enhanced query building with context integration"""
     try:
         if not chat_history:
             return question
 
         lower_q = question.lower().strip()
-        if any(keyword in lower_q for keyword in ["yes", "provide", "sure", "okay", "more", "go on", "tell me"]) or len(lower_q) < 20:
+        
+        # Detect vague follow-ups
+        vague_indicators = [
+            "yes", "more", "continue", "go on", "tell me more", "elaborate", 
+            "explain", "what else", "provide", "show me", "give me"
+        ]
+        
+        if any(indicator in lower_q for indicator in vague_indicators) or len(lower_q) < 25:
             prev_question = chat_history[-1].get('question', '')
-            return f"{prev_question} - {question} (follow-up for more details)"
+            return f"{prev_question} - provide more detailed information about: {question}"
 
-        if is_follow_up:
-            prev_question = chat_history[-1].get('question', '')
-            enhanced = f"{question} (context from prior question: {prev_question})"
+        # Combine with previous context for follow-ups
+        if is_follow_up and len(chat_history) > 0:
+            prev_terms = []
+            for item in chat_history[-2:]:
+                if 'question' in item:
+                    words = re.findall(r'\b[A-Z][a-z]+|\b[a-z]{4,}\b', item['question'])
+                    prev_terms.extend(words[:3])
+            
+            if prev_terms:
+                enhanced = f"{question} (related to: {' '.join(set(prev_terms)[:5])})"
+            else:
+                enhanced = question
         else:
             enhanced = question
 
-        recent_terms = set()
-        for item in chat_history[-2:]:
-            if 'question' in item:
-                words = re.findall(r'\b\w{4,}\b', item['question'].lower())
-                recent_terms.update(words)
-        
-        if recent_terms:
-            context_terms = list(recent_terms)[:3]
-            enhanced = f"{enhanced} (history terms: {' '.join(context_terms)})"
-        
         return enhanced
         
     except Exception as e:
         print(f"Error enhancing query: {str(e)}")
         return question
 
-def safe_chain_invoke(chain, inputs: Dict[str, Any]) -> str:
+def validate_groq_connection() -> bool:
+    """Validate Groq API connection"""
     try:
-        result = chain.invoke(inputs)
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            print("ERROR: GROQ_API_KEY not found in environment variables")
+            return False
         
-        if hasattr(result, 'content'):
-            return result.content
-        elif isinstance(result, dict) and 'text' in result:
-            return result['text']
-        else:
-            return str(result)
-            
+        # Test connection
+        llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0.1,
+            max_tokens=50,
+            groq_api_key=api_key
+        )
+        
+        response = llm.invoke("Hello, respond with 'Connection successful'")
+        return "successful" in response.content.lower()
+        
     except Exception as e:
-        print(f"Chain invoke error: {str(e)}")
-        return f"Error processing request: {str(e)}"
+        print(f"Groq connection test failed: {str(e)}")
+        return False
 
-def validate_chain_data(chain_data: Dict[str, Any]) -> bool:
-    required_keys = ['retriever', 'reasoner', 'vectordb', 'chunks', 'metadata']
-    return all(key in chain_data for key in required_keys)
+def get_available_groq_models() -> List[str]:
+    """Get list of available Groq models"""
+    return [
+        "llama-3.3-70b-versatile",       # Best for complex reasoning
+        "llama-3.1-8b-instant",         # Fastest responses
+        "gemma2-9b-it",                 # Good instruction following
+        "mixtral-8x7b-32768"            # Balanced performance
+    ]
 
-def test_chain(pdf_path: str) -> bool:
+def test_advanced_cot_chain(pdf_path: str) -> bool:
+    """Test the advanced COT chain implementation"""
     try:
+        if not validate_groq_connection():
+            print("❌ Groq API connection failed")
+            return False
+            
         chain_data = build_chain(pdf_path)
         result = ask_chain(chain_data, "What is this document about?")
-        return 'answer' in result and result['answer'] != ""
+        
+        success = (
+            'answer' in result and 
+            result['answer'] != "" and
+            'reasoning' in result and
+            'Advanced COT' in result['models_used']['reasoning_engine']
+        )
+        
+        if success:
+            print("✅ Advanced COT Chain test successful!")
+        else:
+            print("❌ Advanced COT Chain test failed!")
+            
+        return success
+        
     except Exception as e:
-        print(f"Test failed: {str(e)}")
+        print(f"❌ Advanced COT test failed: {str(e)}")
         return False
