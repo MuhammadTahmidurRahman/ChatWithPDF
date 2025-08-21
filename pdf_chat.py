@@ -60,101 +60,57 @@ class AdvancedCOTPromptEngineering:
             groq_api_key=os.getenv("GROQ_API_KEY")
         )
         
-        # Advanced COT Prompt Template with Multiple Reasoning Strategies
+        # Advanced COT Prompt Template with Better Separation
         self.advanced_cot_prompt = ChatPromptTemplate.from_template("""
-You are an expert document analyst equipped with advanced reasoning capabilities. Your task is to provide comprehensive, well-reasoned answers using sophisticated Chain-of-Thought (COT) reasoning.
+You are an expert document analyst. Your task is to provide comprehensive, well-reasoned answers using advanced Chain-of-Thought reasoning. You MUST provide your response in the exact format specified below.
 
-=== CONTEXT INFORMATION ===
-Document Context:
+=== DOCUMENT CONTEXT ===
 {context}
 
-Conversation History:
+=== CONVERSATION HISTORY ===
 {chat_history}
 
-=== QUESTION ANALYSIS ===
-Current Question: "{question}"
+=== CURRENT QUESTION ===
+Question: "{question}"
 Question Type: {question_type}
 Is Follow-up: {is_follow_up}
 Is Vague Follow-up: {is_vague_follow_up}
 
-=== ADVANCED COT REASONING FRAMEWORK ===
+Now, analyze this question using advanced reasoning, then provide your response in the EXACT format below:
 
-**STEP 1: QUESTION DECOMPOSITION AND UNDERSTANDING**
-Break down the question into its core components:
-- What is the user specifically asking for?
-- What type of information is required (factual, analytical, comparative, etc.)?
-- Are there any implicit assumptions or context dependencies?
-- How does this relate to previous conversation elements?
+[FINAL_ANSWER_START]
+[Provide your clear, direct answer to the user's question here. This should be focused, comprehensive, and directly address what the user is asking. Do not include reasoning steps or analysis here - just the clean, final answer.]
+[FINAL_ANSWER_END]
 
-**STEP 2: CONTEXT EVALUATION AND RELEVANCE MAPPING**
-Analyze the provided document context:
-- Which sections of the context directly address the question?
-- What supporting information is available?
-- Are there any contradictions or ambiguities in the source material?
-- How reliable and comprehensive is the available information?
+[REASONING_ANALYSIS_START]
+**🎯 Question Understanding:**
+[Analyze what the user is specifically asking for and the context of their question]
 
-**STEP 3: EVIDENCE EXTRACTION AND FACT VERIFICATION**
-Systematically extract relevant information:
-- Direct quotes or statements that answer the question
-- Supporting details that provide context
-- Numerical data, dates, or specific facts
-- Relationships between different pieces of information
+**📋 Evidence Extraction:**
+[List the key pieces of information from the document that support your answer]
 
-**STEP 4: LOGICAL REASONING CHAIN**
-Apply structured reasoning:
-- What can be directly concluded from the evidence?
-- What reasonable inferences can be drawn?
-- Are there any logical gaps that need acknowledgment?
-- How do different pieces of evidence connect to form a complete picture?
+**🧠 Logical Reasoning:**
+[Explain the step-by-step reasoning process used to arrive at your conclusion]
 
-**STEP 5: CONVERSATION CONTINUITY ANALYSIS**
-Consider conversational context:
-- How does this question build upon previous exchanges?
-- Are there themes or topics that need continuity?
-- Should the answer reference or expand on previous responses?
+**📊 Confidence Assessment:**
+[Evaluate your confidence level in the answer and explain why]
 
-**STEP 6: UNCERTAINTY AND LIMITATION ASSESSMENT**
-Evaluate confidence levels:
-- What information is well-supported by the document?
-- Where are the gaps or uncertainties?
-- What assumptions, if any, are being made?
-- How should limitations be communicated?
+**⚠️ Limitations & Uncertainties:**
+[Acknowledge any gaps, assumptions, or areas where more information would be helpful]
+[REASONING_ANALYSIS_END]
 
-**STEP 7: RESPONSE SYNTHESIS AND OPTIMIZATION**
-Craft the optimal response:
-- Structure the answer for clarity and completeness
-- Balance detail with accessibility
-- Ensure direct response to the user's question
-- Include appropriate caveats or limitations
-
-=== FINAL RESPONSE FORMAT ===
-
-Based on my analysis, here is my comprehensive response:
-
-[ANSWER_START]
-[Provide your complete, well-reasoned answer here. This should directly address the user's question while incorporating insights from your COT reasoning process. Make sure to:
-- Start with a clear, direct answer
-- Provide supporting details from the document
-- Acknowledge any limitations or uncertainties
-- Maintain appropriate tone and detail level]
-[ANSWER_END]
-
-=== REASONING DOCUMENTATION ===
-
-**Question Analysis**: [Brief summary of question understanding]
-**Key Evidence Found**: [Main supporting information from context]
-**Reasoning Process**: [Key logical steps taken]
-**Confidence Level**: [High/Medium/Low with justification]
-**Limitations Noted**: [Any gaps or uncertainties]
-
-Remember: Base all responses strictly on the provided document context and conversation history. If information is not available or unclear, explicitly acknowledge these limitations while providing the best possible response based on available evidence.
+Remember: 
+1. Keep the FINAL_ANSWER section clean and focused - no reasoning steps there
+2. Put all analysis, reasoning, and methodology in the REASONING_ANALYSIS section
+3. Base everything on the provided document context
+4. Be clear about limitations and confidence levels
 """)
         
         self.chain = self.advanced_cot_prompt | self.llm
     
     def advanced_reason(self, context: str, question: str, chat_history: str, is_follow_up: bool, is_vague_follow_up: bool) -> Tuple[str, str, str]:
         """
-        Execute advanced COT reasoning with custom prompt engineering
+        Execute advanced COT reasoning with clear separation of answer and reasoning
         """
         try:
             # Determine question type for better prompt customization
@@ -172,11 +128,11 @@ Remember: Base all responses strictly on the provided document context and conve
             
             full_response = response.content if hasattr(response, 'content') else str(response)
             
-            # Extract structured components
-            final_answer = self._extract_final_answer(full_response)
-            reasoning_steps = self._extract_reasoning_documentation(full_response)
+            # Extract components with improved parsing
+            final_answer = self._extract_clean_answer(full_response)
+            reasoning_analysis = self._extract_reasoning_analysis(full_response)
             
-            return full_response, final_answer, reasoning_steps
+            return full_response, final_answer, reasoning_analysis
             
         except Exception as e:
             error_msg = f"Advanced COT reasoning encountered an error: {str(e)}"
@@ -203,75 +159,107 @@ Remember: Base all responses strictly on the provided document context and conve
         else:
             return "General Inquiry"
     
-    def _extract_final_answer(self, response_text: str) -> str:
-        """Extract the final answer from COT response"""
-        # Look for content between ANSWER_START and ANSWER_END markers
-        answer_pattern = r'\[ANSWER_START\](.*?)\[ANSWER_END\]'
+    def _extract_clean_answer(self, response_text: str) -> str:
+        """Extract only the clean final answer, without any reasoning"""
+        # Look for content between FINAL_ANSWER_START and FINAL_ANSWER_END markers
+        answer_pattern = r'\[FINAL_ANSWER_START\](.*?)\[FINAL_ANSWER_END\]'
         match = re.search(answer_pattern, response_text, re.DOTALL)
         
         if match:
             answer = match.group(1).strip()
-            # Clean up the answer
-            answer = re.sub(r'\n+', ' ', answer).strip()
-            if len(answer) > 20:
-                return answer
+            # Clean up the answer - remove extra whitespace but preserve structure
+            answer = re.sub(r'\n{3,}', '\n\n', answer)  # Replace 3+ newlines with 2
+            answer = re.sub(r'[ \t]+', ' ', answer)      # Replace multiple spaces/tabs with single space
+            return answer.strip()
         
-        # Fallback: extract last substantial paragraph before reasoning documentation
-        sections = response_text.split('=== REASONING DOCUMENTATION ===')
-        if len(sections) > 1:
-            content_section = sections[0]
-            paragraphs = [p.strip() for p in content_section.split('\n\n') if len(p.strip()) > 30]
-            if paragraphs:
-                return paragraphs[-1]
+        # Fallback: try to extract a clean answer from the beginning
+        lines = response_text.split('\n')
+        potential_answer = []
         
-        return "Based on the document analysis, I found relevant information but need more specific guidance to provide a targeted response."
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('=== ') and not line.startswith('**') and not line.startswith('['):
+                if len(line) > 20:  # Only substantial lines
+                    potential_answer.append(line)
+                    if len(potential_answer) >= 3:  # Take first few substantial lines
+                        break
+        
+        if potential_answer:
+            return ' '.join(potential_answer)
+        
+        return "I found relevant information in the document, but need a more specific question to provide a targeted response."
     
-    def _extract_reasoning_documentation(self, response_text: str) -> str:
-        """Extract and format reasoning documentation"""
-        # Look for reasoning documentation section
-        reasoning_pattern = r'=== REASONING DOCUMENTATION ===(.*?)(?=$|Remember:)'
+    def _extract_reasoning_analysis(self, response_text: str) -> str:
+        """Extract and format the reasoning analysis section"""
+        # Look for reasoning analysis section
+        reasoning_pattern = r'\[REASONING_ANALYSIS_START\](.*?)\[REASONING_ANALYSIS_END\]'
         match = re.search(reasoning_pattern, response_text, re.DOTALL)
         
         if match:
             reasoning = match.group(1).strip()
-            return self._format_reasoning_steps(reasoning)
+            return self._format_reasoning_display(reasoning)
         
-        # Fallback: extract step-by-step reasoning
-        steps_pattern = r'\*\*STEP \d+:.*?\*\*(.*?)(?=\*\*STEP|\*\*FINAL|\[ANSWER_START\]|$)'
-        steps = re.findall(steps_pattern, response_text, re.DOTALL)
+        # Fallback: look for structured reasoning components
+        components = self._extract_reasoning_components(response_text)
+        if components:
+            return self._format_reasoning_display('\n\n'.join(components))
         
-        if steps:
-            formatted_steps = []
-            for i, step in enumerate(steps, 1):
-                clean_step = re.sub(r'\n+', ' ', step.strip())
-                if clean_step:
-                    formatted_steps.append(f"🔍 Step {i}: {clean_step}")
-            return "\n\n".join(formatted_steps)
-        
-        return "Advanced COT reasoning completed with comprehensive analysis."
+        return "Advanced COT reasoning completed with comprehensive document analysis."
     
-    def _format_reasoning_steps(self, reasoning_text: str) -> str:
-        """Format reasoning documentation into readable steps"""
-        # Split by reasoning components
-        components = {
-            'Question Analysis': '🎯',
-            'Key Evidence Found': '📋',
-            'Reasoning Process': '🧠',
-            'Confidence Level': '📊',
-            'Limitations Noted': '⚠️'
-        }
+    def _extract_reasoning_components(self, text: str) -> List[str]:
+        """Extract reasoning components from unstructured text"""
+        components = []
         
-        formatted_parts = []
-        for component, emoji in components.items():
-            pattern = rf'\*\*{re.escape(component)}\*\*:?\s*(.*?)(?=\*\*|$)'
-            match = re.search(pattern, reasoning_text, re.DOTALL | re.IGNORECASE)
-            if match:
-                content = match.group(1).strip()
-                content = re.sub(r'\n+', ' ', content)
-                if content and content != '[Brief summary of question understanding]':
-                    formatted_parts.append(f"{emoji} {component}:\n{content}")
+        # Look for emoji-marked sections
+        patterns = [
+            (r'🎯[^🎯📋🧠📊⚠️]*', 'Question Analysis'),
+            (r'📋[^🎯📋🧠📊⚠️]*', 'Evidence Found'),
+            (r'🧠[^🎯📋🧠📊⚠️]*', 'Reasoning Process'),
+            (r'📊[^🎯📋🧠📊⚠️]*', 'Confidence Level'),
+            (r'⚠️[^🎯📋🧠📊⚠️]*', 'Limitations')
+        ]
         
-        return "\n\n".join(formatted_parts) if formatted_parts else reasoning_text.strip()
+        for pattern, name in patterns:
+            matches = re.findall(pattern, text, re.DOTALL)
+            if matches:
+                content = matches[0].strip()
+                if len(content) > 10:  # Only if substantial content
+                    components.append(content)
+        
+        return components
+    
+    def _format_reasoning_display(self, reasoning_text: str) -> str:
+        """Format reasoning for better display in the UI"""
+        if not reasoning_text:
+            return "Reasoning analysis completed."
+        
+        # Split by major sections
+        sections = []
+        current_section = ""
+        
+        lines = reasoning_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('**') and line.endswith('**'):
+                # New section header
+                if current_section:
+                    sections.append(current_section.strip())
+                current_section = line + '\n'
+            else:
+                current_section += line + '\n'
+        
+        if current_section:
+            sections.append(current_section.strip())
+        
+        # Format sections nicely
+        formatted_sections = []
+        for section in sections:
+            if section and len(section.strip()) > 5:
+                # Clean up the section
+                section = re.sub(r'\n{2,}', '\n', section)  # Remove extra newlines
+                formatted_sections.append(section)
+        
+        return '\n\n'.join(formatted_sections) if formatted_sections else reasoning_text
 
 def build_chain(pdf_path: str) -> Dict[str, Any]:
     """Build enhanced RAG chain with advanced COT prompt engineering"""
@@ -319,11 +307,11 @@ def build_chain(pdf_path: str) -> Dict[str, Any]:
         # Initialize Advanced COT Prompt Engineering System
         cot_reasoner = AdvancedCOTPromptEngineering()
         
-        print("✅ Advanced COT Chain built successfully with custom prompt engineering!")
+        print("✅ Advanced COT Chain built successfully with improved answer extraction!")
         
         chain_data = {
             'retriever': retriever,
-            'cot_reasoner': cot_reasoner,  # Using advanced COT prompt engineering
+            'cot_reasoner': cot_reasoner,
             'vectordb': vectordb,
             'chunks': chunks,
             'metadata': {
@@ -332,7 +320,7 @@ def build_chain(pdf_path: str) -> Dict[str, Any]:
                 'chunk_size': CHUNK_SIZE,
                 'llm_model': cot_reasoner.model_name,
                 'embedding_model': 'sentence-transformers/all-MiniLM-L6-v2',
-                'reasoning_engine': 'Advanced COT Prompt Engineering with Custom Templates'
+                'reasoning_engine': 'Advanced COT with Separated Answer/Reasoning'
             }
         }
         
@@ -344,14 +332,14 @@ def build_chain(pdf_path: str) -> Dict[str, Any]:
         raise e
 
 def ask_chain(chain_data: Dict[str, Any], question: str, chat_history: List[Dict] = None, is_follow_up: bool = False, is_vague_follow_up: bool = False) -> Dict[str, str]:
-    """Execute question with advanced COT prompt engineering"""
+    """Execute question with improved answer/reasoning separation"""
     
     if chat_history is None:
         chat_history = []
     
     with model_lock:
         try:
-            print(f"🎯 Processing question with Advanced COT: {question}")
+            print(f"🎯 Processing question with Improved COT: {question}")
             
             # Build conversation history
             history_text = "\n".join([
@@ -368,7 +356,7 @@ def ask_chain(chain_data: Dict[str, Any], question: str, chat_history: List[Dict
                 new_context = "\n\n".join([doc.page_content for doc in relevant_docs[:3]])
                 context = f"Previous context:\n{prev_context}\n\nAdditional context:\n{new_context}"
                 context_chunks = len(relevant_docs)
-                print("🔄 Enhanced context for vague follow-up")
+                print("🔥 Enhanced context for vague follow-up")
             else:
                 enhanced_query = enhance_query(question, chat_history, is_follow_up)
                 print(f"🔍 Enhanced query: {enhanced_query}")
@@ -377,41 +365,41 @@ def ask_chain(chain_data: Dict[str, Any], question: str, chat_history: List[Dict
                 context_chunks = len(relevant_docs)
                 print(f"📚 Retrieved {context_chunks} relevant documents")
             
-            # Execute Advanced COT Reasoning with Custom Prompt Engineering
-            print("🧠 Executing Advanced COT Prompt Engineering...")
+            # Execute Advanced COT Reasoning with Improved Separation
+            print("🧠 Executing Improved COT with Answer/Reasoning Separation...")
             full_reasoning, clean_answer, formatted_reasoning = chain_data['cot_reasoner'].advanced_reason(
-                context=context[:6000],  # Increased context for better reasoning
+                context=context[:6000],
                 question=question,
                 chat_history=history_text,
                 is_follow_up=is_follow_up,
                 is_vague_follow_up=is_vague_follow_up
             )
             
-            print("✅ Advanced COT reasoning completed!")
+            print("✅ Improved COT reasoning completed with clean separation!")
             
             return {
-                'reasoning': formatted_reasoning,  # Formatted reasoning steps
-                'answer': clean_answer,           # Clean final answer
+                'reasoning': formatted_reasoning,  # Clean reasoning only
+                'answer': clean_answer,           # Clean answer only
                 'context_chunks': context_chunks,
-                'context': context[:1000],        # Context for follow-ups
+                'context': context[:1000],
                 'models_used': {
                     'llm_model': chain_data['metadata']['llm_model'],
                     'embedding_model': chain_data['metadata']['embedding_model'],
                     'reasoning_engine': chain_data['metadata']['reasoning_engine']
                 },
-                'raw_reasoning': full_reasoning   # Full COT reasoning for analysis
+                'raw_reasoning': full_reasoning[:2000]  # Truncated for performance
             }
             
         except Exception as e:
-            print(f"❌ Error in advanced COT reasoning: {str(e)}")
+            print(f"❌ Error in improved COT reasoning: {str(e)}")
             return {
-                'reasoning': f"Error in advanced COT reasoning: {str(e)}",
-                'answer': "I encountered an error during advanced reasoning. Please verify the API key and try again.",
+                'reasoning': f"Error in reasoning: {str(e)}",
+                'answer': "I encountered an error during processing. Please verify the API key and try again.",
                 'context_chunks': 0,
                 'models_used': {
                     'llm_model': 'Error',
                     'embedding_model': 'Error', 
-                    'reasoning_engine': 'Advanced COT Error'
+                    'reasoning_engine': 'Improved COT Error'
                 }
             }
 
@@ -487,7 +475,7 @@ def get_available_groq_models() -> List[str]:
     ]
 
 def test_advanced_cot_chain(pdf_path: str) -> bool:
-    """Test the advanced COT chain implementation"""
+    """Test the improved COT chain implementation"""
     try:
         if not validate_groq_connection():
             print("❌ Groq API connection failed")
@@ -500,16 +488,16 @@ def test_advanced_cot_chain(pdf_path: str) -> bool:
             'answer' in result and 
             result['answer'] != "" and
             'reasoning' in result and
-            'Advanced COT' in result['models_used']['reasoning_engine']
+            'Separated' in result['models_used']['reasoning_engine']
         )
         
         if success:
-            print("✅ Advanced COT Chain test successful!")
+            print("✅ Improved COT Chain test successful!")
         else:
-            print("❌ Advanced COT Chain test failed!")
+            print("❌ Improved COT Chain test failed!")
             
         return success
         
     except Exception as e:
-        print(f"❌ Advanced COT test failed: {str(e)}")
+        print(f"❌ Improved COT test failed: {str(e)}")
         return False
