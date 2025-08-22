@@ -505,6 +505,10 @@
                         <h3>💡 Response</h3>
                         <div class="response-meta">
                             <div class="meta-item">
+                                <span class="meta-label">BLEU Score</span>
+                                <span class="meta-value" id="bleuScore">-</span>
+                            </div>
+                            <div class="meta-item">
                                 <span class="meta-label">Response Time</span>
                                 <span class="meta-value" id="responseTime">-</span>
                             </div>
@@ -702,6 +706,7 @@
                         responseTime: data.response_time,
                         contextChunks: data.context_chunks,
                         qualityScore: data.quality_score,
+                        bleu_score: data.bleu_score || 0,
                         modelsUsed: data.models_used || {}
                     });
                 } else {
@@ -797,6 +802,7 @@
                     responseTime: data.elapsed || '0.0s',
                     contextChunks: data.context_chunks || 0,
                     qualityScore: data.quality_score || 75,
+                    bleu_score: data.bleu_score || 0,
                     modelsUsed: data.models_used || {}
                 });
                 
@@ -817,6 +823,7 @@
             document.getElementById('responseTime').textContent = data.responseTime;
             document.getElementById('contextChunks').textContent = data.contextChunks;
             document.getElementById('qualityScore').textContent = data.qualityScore;
+            document.getElementById('bleuScore').textContent = (data.bleu_score || 0).toFixed(3);
             
             // Display model information
             document.getElementById('llmModel').textContent = data.modelsUsed.llm_model || 'llama-3.3-70b-versatile';
@@ -830,6 +837,7 @@
             conversationHistory.push({
                 question: data.question,
                 answer: data.answer,
+                bleu_score: data.bleu_score || 0,
                 timestamp: new Date().toISOString(),
                 modelsUsed: data.modelsUsed
             });

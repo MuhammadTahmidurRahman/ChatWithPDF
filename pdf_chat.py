@@ -11,7 +11,7 @@ from langchain.schema import Document
 from langchain.prompts import ChatPromptTemplate
 import threading
 from dotenv import load_dotenv
-
+from bleu_evaluator import evaluate_answer_bleu
 # Load environment variables
 load_dotenv()
 
@@ -377,17 +377,27 @@ def ask_chain(chain_data: Dict[str, Any], question: str, chat_history: List[Dict
             
             print("✅ Improved COT reasoning completed with clean separation!")
             
+            # Calculate BLEU score
+            try:
+                bleu_result = evaluate_answer_bleu(question, clean_answer)
+                bleu_score = bleu_result.get('bleu_score', 0.0) if isinstance(bleu_result, dict) else 0.0
+            except Exception as e:
+                print(f"Error calculating BLEU score: {str(e)}")
+                bleu_score = 0.0
+                bleu_result = {'bleu_score': 0.0, 'error': str(e)}
             return {
                 'reasoning': formatted_reasoning,  # Clean reasoning only
                 'answer': clean_answer,           # Clean answer only
                 'context_chunks': context_chunks,
                 'context': context[:1000],
+                'bleu_score': bleu_score,
+                'bleu_metrics': bleu_result,
                 'models_used': {
                     'llm_model': chain_data['metadata']['llm_model'],
                     'embedding_model': chain_data['metadata']['embedding_model'],
                     'reasoning_engine': chain_data['metadata']['reasoning_engine']
                 },
-                'raw_reasoning': full_reasoning[:2000]  # Truncated for performance
+                'raw_reasoning': full_reasoning[:2000],  # Truncated for performance
             }
             
         except Exception as e:

@@ -40,6 +40,13 @@ async def index(request: Request):
         "api_status": "connected" if validate_groq_connection() else "disconnected"
     })
 
+@app.get("/bleu_status")
+async def bleu_evaluation_status():
+    """Get BLEU evaluation system status"""
+    from bleu_evaluator import get_bleu_evaluator
+    evaluator = get_bleu_evaluator()
+    return evaluator.get_evaluation_summary()
+    
 @app.get("/api/status")
 async def api_status():
     """Check API and system status"""
@@ -102,6 +109,8 @@ async def query(
             "response_time": "0.00s",
             "context_chunks": 0,
             "quality_score": 0,
+            "bleu_score": result.get('bleu_metrics', {}).get('bleu_score', 0.0),  # Add this line
+            "bleu_details": result.get('bleu_metrics', {}),  # Add this line
             "models_used": {
                 "llm_model": "N/A",
                 "embedding_model": "N/A", 
@@ -136,11 +145,16 @@ async def query(
         )
         elapsed = time.perf_counter() - start_time
         
+
         # Store performance metrics
         performance_metrics.setdefault(filename, []).append(elapsed)
         if len(performance_metrics[filename]) > 50:
             performance_metrics[filename] = performance_metrics[filename][-50:]
         
+        # Add BLEU score extraction
+        bleu_score = result.get('bleu_score', 0.0)
+        bleu_metrics = result.get('bleu_metrics', {})
+
         # Enhanced conversation memory
         conversation_entry = {
             'question': question,
@@ -178,6 +192,7 @@ async def query(
             "conversation_length": len(conversation_memory[filename]),
             "is_follow_up": is_follow_up,
             "quality_score": quality_score,
+            "bleu_score": bleu_score,
             "models_used": {
                 "llm_model": models_used.get('llm_model', 'llama-3.3-70b-versatile'),
                 "embedding_model": models_used.get('embedding_model', 'sentence-transformers/all-MiniLM-L6-v2'),
@@ -196,6 +211,7 @@ async def query(
             "response_time": "0.00s",
             "context_chunks": 0,
             "quality_score": 0,
+            "bleu_score": 0.0,
             "models_used": {
                 "llm_model": "Error",
                 "embedding_model": "Error",
